@@ -1,0 +1,19 @@
+# Local Claude Code settings
+.claude/
+
+# Conversation / prompt logs (dev artifacts)
+prmpt.txt
+prompt-logs/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+
+# Local env / secrets
+.env
+.env.*
+*.key
+*.pem

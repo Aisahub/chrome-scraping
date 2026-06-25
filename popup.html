@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    :root { color-scheme: light; }
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      background: #fff;
+      color: #222;
+    }
+    h1 {
+      font-size: 15px;
+      margin: 0 0 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .row { display: flex; gap: 8px; }
+    input[type="text"] {
+      flex: 1;
+      padding: 9px 10px;
+      font-size: 14px;
+      border: 1px solid #d0d0d0;
+      border-radius: 8px;
+      outline: none;
+      box-sizing: border-box;
+    }
+    input[type="text"]:focus { border-color: #2f6df6; }
+    button {
+      padding: 9px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      background: #2f6df6;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    button:disabled { background: #9bb6f3; cursor: default; }
+    #status {
+      margin-top: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #555;
+      min-height: 18px;
+    }
+    #status.error { color: #d23b3b; }
+    #status.done { color: #1a9c4b; }
+    .hint { margin-top: 10px; font-size: 11px; color: #999; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1>🛒 쿠팡 검색 캡처</h1>
+  <div class="row">
+    <input type="text" id="keyword" placeholder="검색 키워드 입력 (예: 무선마우스)" autofocus />
+    <button id="run">실행</button>
+  </div>
+  <div id="status"></div>
+  <div class="hint">실행하면 새 탭에서 쿠팡 검색 결과를 열어 화면을 캡처하고, 상품명·가격·별점·리뷰수를 CSV로 다운로드합니다.</div>
+  <script src="popup.js"></script>
+</body>
+</html>

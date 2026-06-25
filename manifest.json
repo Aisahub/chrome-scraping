@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "쿠팡 검색 캡처",
+  "version": "1.0.0",
+  "description": "쿠팡에서 키워드를 검색하고 화면을 캡처한 뒤, 상품명·가격·별점·리뷰수를 CSV로 저장합니다.",
+  "permissions": ["scripting", "downloads", "tabs", "activeTab", "storage", "debugger"],
+  "host_permissions": ["https://www.coupang.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "쿠팡 검색 캡처"
+  },
+  "incognito": "spanning",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
