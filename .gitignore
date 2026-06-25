@@ -3,7 +3,6 @@
 
 # Conversation / prompt logs (dev artifacts)
 prmpt.txt
-prompt-logs/
 
 # OS / editor cruft
 .DS_Store

@@ -1,0 +1,4 @@
+# session: 12bcb878-90cc-4683-af5b-3407ec47913e
+
+[2026-06-20 13:19:35] chrome.debugger 익스텐션 권한은 뭐야
+
