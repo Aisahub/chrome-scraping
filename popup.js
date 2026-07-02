@@ -14,7 +14,16 @@ function setStatus(text, kind) {
 
 function setDirty(v) {
   dirty = v;
-  $("dirty").textContent = v ? "● 저장 안 됨" : "";
+  const mark = v ? "● 저장 안 됨" : "";
+  $("dirty").textContent = mark;
+  $("specDirty").textContent = mark; // 스펙 편집 화면에도 동일하게 미저장 표시
+}
+
+// 스펙 편집 화면 헤더의 단계 수/저장 피드백 표시 (kind: "done" | "error" | 없음)
+function setSpecMeta(text, kind) {
+  const el = $("specMeta");
+  el.textContent = text || "";
+  el.className = "meta" + (kind ? " " + kind : "");
 }
 
 // ===== 진행 모니터 (간략 로그) =====
@@ -112,7 +121,7 @@ $("saveKey").addEventListener("click", () => {
 
 // ===== 뷰 전환 =====
 function activate(viewId) {
-  ["listView", "detailView", "specView"].forEach((v) =>
+  ["listView", "detailView", "specView", "htmlView"].forEach((v) =>
     $(v).classList.toggle("active", v === viewId)
   );
 }
@@ -208,12 +217,12 @@ function showDetail(project) {
   if (project.spec && Array.isArray(project.spec.steps)) {
     const n = project.spec.steps.length;
     $("spec").value = JSON.stringify(project.spec, null, 2);
-    $("specMeta").textContent = n + "단계";
+    setSpecMeta(n + "단계");
     showSpecRow(n);
     $("run").disabled = false;
   } else {
     $("spec").value = "";
-    $("specMeta").textContent = "";
+    setSpecMeta("");
     hideSpecRow();
     $("run").disabled = true;
   }
@@ -259,7 +268,9 @@ $("newProject").addEventListener("click", () => {
   showDetail(draft);
 });
 
-$("save").addEventListener("click", async () => {
+// 폼 + 화면의 스펙(JSON)을 읽어 프로젝트로 저장한다.
+// 디테일 화면과 스펙 편집 화면의 "저장" 버튼이 공유한다. 결과는 호출자가 각 화면에 맞게 표시.
+async function saveProject() {
   const form = readForm();
 
   // 화면의 스펙(JSON)을 파싱해서 함께 저장. 비어 있으면 null 허용.
@@ -269,12 +280,10 @@ $("save").addEventListener("click", async () => {
     try {
       spec = JSON.parse(raw);
     } catch (e) {
-      setStatus("스펙 JSON이 올바르지 않아 저장할 수 없습니다: " + e.message, "error");
-      return;
+      return { ok: false, error: "스펙 JSON이 올바르지 않아 저장할 수 없습니다: " + e.message };
     }
     if (!spec || !Array.isArray(spec.steps)) {
-      setStatus('스펙에 "steps" 배열이 없습니다.', "error");
-      return;
+      return { ok: false, error: '스펙에 "steps" 배열이 없습니다.' };
     }
   }
 
@@ -290,10 +299,53 @@ $("save").addEventListener("click", async () => {
   };
 
   const saved = await upsertProject(merged);
+
+  // 저장 검증: 방금 쓴 내용을 스토리지에서 다시 읽어 실제로 반영됐는지 확인한다.
+  // (조용한 쓰기 실패 — 예: 팝업이 쓰기 도중 닫힘/쿼터 초과/비영속 스토리지 — 를 빨간 에러로 드러내기 위함)
+  const verify = await getProject(saved.id);
+  // chrome.storage가 객체 키를 정렬해서 반환해도 같은 프로젝트로 판단해야 한다.
+  // JSON.stringify 문자열 비교는 키 순서만 달라져도 실패하므로 사용하지 않는다.
+  const wrote = !!verify && storageValuesEqual(verify, saved);
+  // 진단 로그(팝업 콘솔에서 확인): 무엇이 어긋났는지 한눈에 보여준다.
+  console.log("[saveProject] id=%s found=%s savedSteps=%s verifySteps=%s wrote=%s incognito=%s",
+    saved.id, !!verify,
+    spec && spec.steps ? spec.steps.length : null,
+    verify && verify.spec && verify.spec.steps ? verify.spec.steps.length : null,
+    wrote, chrome.extension ? chrome.extension.inIncognitoContext : "?");
+  if (!wrote) {
+    return {
+      ok: false,
+      error: verify
+        ? "저장 직후 확인한 스펙이 저장 요청과 다릅니다. 확장 프로그램을 다시 로드한 뒤 재시도해 주세요."
+        : "저장한 프로젝트를 다시 찾지 못했습니다. 저장 공간 또는 확장 프로그램 상태를 확인해 주세요.",
+    };
+  }
+
   detailProject = saved;
   await setCurrentProjectId(saved.id);
   setDirty(false);
-  setStatus(`"${saved.name}" 저장됨.`, "done");
+  return { ok: true, saved, spec };
+}
+
+// 디테일 화면 저장 → status 줄에 결과 표시
+$("save").addEventListener("click", async () => {
+  let r;
+  try { r = await saveProject(); }
+  catch (e) { setStatus("저장 중 오류: " + ((e && e.message) || e), "error"); return; }
+  if (!r.ok) { setStatus(r.error, "error"); return; }
+  setStatus(`"${r.saved.name}" 저장됨.`, "done");
+});
+
+// 스펙 편집 화면에서 바로 저장 → 피드백을 이 화면(specMeta)에 표시 (status는 디테일 복귀 시 보이도록 함께 설정)
+$("specSave").addEventListener("click", async () => {
+  let r;
+  try { r = await saveProject(); }
+  catch (e) { setSpecMeta("저장 중 오류: " + ((e && e.message) || e), "error"); return; }
+  if (!r.ok) { setSpecMeta(r.error, "error"); return; }
+  const n = r.spec && Array.isArray(r.spec.steps) ? r.spec.steps.length : 0;
+  setStatus(`"${r.saved.name}" 저장됨.`, "done");
+  setSpecMeta("저장됨 ✓", "done");
+  setTimeout(() => setSpecMeta(n + "단계"), 1500); // 잠시 후 단계 수 표시로 복귀
 });
 
 $("back").addEventListener("click", async () => {
@@ -304,6 +356,30 @@ $("back").addEventListener("click", async () => {
 // "생성된 스펙 보기" → 스펙 전용 화면, "← 뒤로" → 디테일 화면
 $("viewSpec").addEventListener("click", () => activate("specView"));
 $("specBack").addEventListener("click", () => activate("detailView"));
+
+// "현재 페이지 HTML 보기" → 계획 생성 시 LLM에게 보내는 단순화 HTML을 그대로 표시.
+// API 키 불필요(LLM 호출 없음). 현재 활성 탭을 그대로 수집한다(시작 페이지로 이동하지 않음).
+$("htmlBack").addEventListener("click", () => activate("detailView"));
+$("viewHtml").addEventListener("click", () => {
+  $("viewHtml").disabled = true;
+  setStatus("페이지 HTML 수집 중…");
+  chrome.runtime.sendMessage({ type: "AI_PREVIEW_HTML" }, (response) => {
+    $("viewHtml").disabled = false;
+    if (chrome.runtime.lastError) {
+      setStatus("오류: " + chrome.runtime.lastError.message, "error");
+      return;
+    }
+    if (!response || !response.ok) {
+      setStatus("HTML 수집 실패: " + ((response && response.error) || "알 수 없는 오류"), "error");
+      return;
+    }
+    $("htmlContent").value = response.html;
+    $("htmlMeta").textContent =
+      response.length.toLocaleString() + "자" + (response.truncated ? " · 잘림" : "");
+    setStatus("");
+    activate("htmlView");
+  });
+});
 
 // 시작 페이지를 현재 탭 주소로 채우기
 $("useCurrent").addEventListener("click", () => {
@@ -366,7 +442,7 @@ function plan() {
       }
       $("spec").value = JSON.stringify(response.spec, null, 2);
       const n = (response.spec.steps || []).length;
-      $("specMeta").textContent = n + "단계";
+      setSpecMeta(n + "단계");
       showSpecRow(n);
       $("run").disabled = false;
       setDirty(true); // 새 스펙이 생겼으니 저장 필요

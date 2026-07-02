@@ -23,6 +23,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
     return true;
   }
+  if (msg && msg.type === "AI_PREVIEW_HTML") {
+    handlePreviewHtml(msg)
+      .then((r) => sendResponse(r))
+      .catch((err) => sendResponse({ ok: false, error: String((err && err.message) || err) }));
+    return true;
+  }
 });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -40,10 +46,12 @@ async function getProviderConfig() {
     return {
       provider: "openai",
       apiKey: openaiKey || "",
-      model: "gpt-4o",
+      model: "gpt-5",
       endpoint: "https://api.openai.com/v1/chat/completions",
-      label: "OpenAI gpt-4o",
+      label: "OpenAI gpt-5",
       keyError: "OpenAI API 키가 없습니다.",
+      reasoning: true,
+      reasoningEffort: "high",
     };
   }
   return {
@@ -87,8 +95,11 @@ async function handlePlan({ task, maxPages, startUrl }) {
   const tabId = tab.id;
 
   // 페이지 DOM 요약 수집
-  progress("페이지 구조 분석 중…");
+  // lazy-load 목록은 스크롤 전엔 위쪽 항목만 DOM에 있으므로, 먼저 끝까지 스크롤해
+  // 지연 로딩 항목까지 모두 띄운 뒤 수집한다(= LLM이 더 많은 상품을 보고 셀렉터를 고름).
+  progress("페이지 구조 분석 중… (지연 로딩 항목 로드를 위해 스크롤)");
   await ensureLoaded(tabId, 20000);
+  await runInPage(tabId, pScroll, []);
   const ctx = await runInPage(tabId, pGetContext, []);
   if (!ctx) throw new Error("페이지 컨텍스트 수집 실패");
 
@@ -101,6 +112,30 @@ async function handlePlan({ task, maxPages, startUrl }) {
 
   progress("계획 생성 완료. 스펙을 검토한 뒤 실행하세요.");
   return { ok: true, spec, source: ctx.url, title: ctx.title };
+}
+
+// [미리보기] 계획 생성 시 LLM에게 보내는 "단순화 HTML"을 그대로 수집해 팝업에 돌려준다.
+// LLM 호출이 없으므로 API 키가 필요 없다. 현재 활성 탭을 그대로 사용하며(시작 페이지로 이동하지 않음),
+// 계획 생성과 똑같은 pGetContext 결과를 보여주어 "LLM이 실제로 본 것"을 확인할 수 있게 한다.
+async function handlePreviewHtml() {
+  const tab = await prepareTab(); // startUrl 없이 → 현재 탭만, 비웹페이지는 친절한 에러로 차단
+  const tabId = tab.id;
+
+  await ensureLoaded(tabId, 20000);
+  // 계획 생성과 동일하게, lazy-load 항목을 모두 띄우기 위해 먼저 끝까지 스크롤한다.
+  progress("지연 로딩 항목 로드를 위해 스크롤 중…");
+  await runInPage(tabId, pScroll, []);
+  const ctx = await runInPage(tabId, pGetContext, []);
+  if (!ctx) throw new Error("페이지 컨텍스트 수집 실패");
+
+  return {
+    ok: true,
+    html: ctx.html,
+    url: ctx.url,
+    title: ctx.title,
+    truncated: ctx.truncated,
+    length: ctx.html.length,
+  };
 }
 
 // [2단계] 실행: 검토(수정 가능)된 액션 스펙을 받아 단계별로 실행하고 결과를 다운로드한다.
@@ -439,7 +474,7 @@ function pGetContext() {
   html = html.replace(/>([^<]{200,})</g, (m, txt) => ">" + txt.slice(0, 120) + "… <");
   // reasoner는 컨텍스트가 넉넉하므로 한도를 크게. 자를 때는 태그 경계('><')에서 잘라
   // 셀렉터가 들어있는 태그가 중간에 잘려나가는 것을 막는다.
-  const LIMIT = 60000;
+  const LIMIT = 600000;
   let truncated = false;
   if (html.length > LIMIT) {
     let cut = html.lastIndexOf("><", LIMIT);
@@ -560,6 +595,7 @@ function buildSpecPrompt(task, ctx, maxPages, prevSpec) {
     "- Use ONLY css selectors that exist in the provided HTML. Prefer stable class/id selectors.",
     "- NEVER use a class selector whose class name contains special characters such as '[', ']', '#', ':', '/', '(', ')', '@', '%', '.', '!', '<', '>' or whitespace (e.g. Tailwind arbitrary-value classes like 'fw-text-[#212B36]' or 'fw-text-[12px]'). Such selectors are invalid CSS and will throw. Instead target the element with structural selectors (tag names, ':first-child'/':nth-child', child combinator '>'), an attribute selector (e.g. '[aria-label]'), or a nearby class WITHOUT special characters.",
     "- For a field that needs an attribute (e.g. link), use the form 'a@href' or 'img@src'.",
+    "- For price/amount fields, select the element that shows the FINAL price the user actually pays (the sale/discounted price), NOT a struck-through original price (avoid '<del>'/'<s>' elements and 'original'/'base'/'정가' price classes). If the price number and its currency unit (e.g. '원', '₩', '$') sit in separate child nodes, target their common PARENT element so the full price is captured. Do NOT, however, pick a parent so broad that it merges several different prices (e.g. original + sale) into one string.",
     "- Before an 'extract' on a list/grid, add a 'scrollToBottom' step UNLESS the task clearly targets a single fixed element. Many sites lazy-load list items, so without scrolling only the above-the-fold items are captured.",
     "- Put exactly one 'extract' step. If multiple pages are requested, follow 'extract' with a 'paginate' step that re-runs the same extract on each next page.",
     "- Page navigation is fully supported: a 'click' that loads a new page, or a 'navigate' to a URL, will NOT break the run. After such a step the next steps run on the new page, so add a 'waitFor' for an element of the destination page.",
@@ -592,21 +628,29 @@ async function generateSpec(cfg, task, ctx, maxPages, prevSpec) {
   const htmlLen = ctx && ctx.html ? ctx.html.length : 0;
   progress("→ " + cfg.label + " 요청 (HTML " + htmlLen + "자)");
 
+  // 리즈닝 모델(gpt-5 등)은 temperature 비기본값을 거부하므로 temperature를 빼고
+  // reasoning_effort를 넘긴다. 비-리즈닝 모델은 기존대로 temperature: 0(결정적).
+  const body = {
+    model: cfg.model,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  };
+  if (cfg.reasoning) {
+    if (cfg.reasoningEffort) body.reasoning_effort = cfg.reasoningEffort;
+  } else {
+    body.temperature = 0;
+  }
+
   const resp = await fetch(cfg.endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer " + cfg.apiKey,
     },
-    body: JSON.stringify({
-      model: cfg.model,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!resp.ok) {

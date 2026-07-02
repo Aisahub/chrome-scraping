@@ -65,10 +65,13 @@
     }
     .detail-head .back { background: #eee; color: #333; font-weight: 500; padding: 6px 10px; font-size: 13px; }
     .detail-head .site { font-size: 11px; color: #999; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .detail-head #save { padding: 6px 14px; font-size: 13px; }
-    #save { background: #1a9c4b; color: #fff; font-weight: 600; }
-    #save:hover { background: #168540; }
-    #dirty { font-size: 11px; color: #d98b00; white-space: nowrap; }
+    .detail-head #save, .detail-head #specSave { padding: 6px 14px; font-size: 13px; }
+    #save, #specSave { background: #1a9c4b; color: #fff; font-weight: 600; }
+    #save:hover, #specSave:hover { background: #168540; }
+    #dirty, #specDirty { font-size: 11px; color: #d98b00; white-space: nowrap; }
+    .detail-head .meta { font-size: 11px; color: #999; font-weight: 400; white-space: nowrap; }
+    #specMeta.done { color: #1a9c4b; font-weight: 600; }
+    #specMeta.error { color: #d23b3b; font-weight: 600; white-space: normal; }
 
     #plan { width: 100%; margin-top: 14px; }
     #run { width: 100%; margin-top: 8px; }
@@ -77,15 +80,18 @@
     #specRow.show { display: block; }
     #viewSpec { width: 100%; background: #eef2ff; color: #2f6df6; border: 1px solid #c9d6ff; font-weight: 600; }
     #viewSpec:hover { background: #e3ebff; }
-    #spec {
+    #spec, #htmlContent {
       width: 100%; box-sizing: border-box; min-height: 150px; margin-top: 12px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 11.5px; line-height: 1.45; padding: 8px 10px;
       border: 1px solid #d0d0d0; border-radius: 8px; outline: none; resize: vertical;
       background: #fafbfc; color: #222; white-space: pre; tab-size: 2;
     }
-    #spec:focus { border-color: #2f6df6; }
+    #spec:focus, #htmlContent:focus { border-color: #2f6df6; }
     #specView #spec { min-height: 400px; }
+    /* HTML 미리보기는 길게 줄바꿈되도록 (한 줄로 압축된 HTML이라 가로 스크롤 대신 줄바꿈) */
+    #htmlContent { white-space: pre-wrap; word-break: break-all; }
+    #htmlView #htmlContent { min-height: 400px; }
     #monitorBox { display: none; margin-top: 14px; }
     #monitorBox.show { display: block; }
     #monitor {
@@ -168,6 +174,8 @@
 
     <button id="plan">① 계획 생성 (액션 스펙)</button>
 
+    <button id="viewHtml" class="secondary" style="width:100%; margin-top:8px;">현재 페이지 HTML 보기 (LLM 입력)</button>
+
     <div id="specRow">
       <button id="viewSpec">생성된 스펙 보기</button>
     </div>
@@ -190,11 +198,24 @@
   <section id="specView" class="view">
     <div class="detail-head">
       <button class="back" id="specBack">← 뒤로</button>
-      <span class="site">생성된 액션 스펙 (JSON · 수정 가능)</span>
+      <span class="site">액션 스펙 (수정 가능)</span>
       <span class="meta" id="specMeta"></span>
+      <span id="specDirty"></span>
+      <button id="specSave">저장</button>
     </div>
     <textarea id="spec" spellcheck="false"></textarea>
-    <div class="hint">셀렉터가 어긋났으면 여기서 직접 수정한 뒤 ← 뒤로 가서 ②실행 하세요. 수정 후 "저장"도 잊지 마세요.</div>
+    <div class="hint">셀렉터를 직접 수정한 뒤 이 화면의 "저장"으로 바로 저장할 수 있습니다. 저장하면 ②실행에도 반영됩니다.</div>
+  </section>
+
+  <!-- ======== HTML 미리보기 뷰 (LLM 입력) ======== -->
+  <section id="htmlView" class="view">
+    <div class="detail-head">
+      <button class="back" id="htmlBack">← 뒤로</button>
+      <span class="site">LLM에 보내는 단순화 HTML</span>
+      <span class="meta" id="htmlMeta"></span>
+    </div>
+    <textarea id="htmlContent" spellcheck="false" readonly></textarea>
+    <div class="hint">계획 생성 시 LLM이 보는 페이지 내용입니다. 스크립트·스타일이 제거되고 일부 긴 텍스트는 압축되며 600,000자를 넘으면 잘립니다.</div>
   </section>
 
   <script src="store.js"></script>

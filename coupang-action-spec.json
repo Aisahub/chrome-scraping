@@ -1,0 +1,20 @@
+{
+  "steps": [
+    { "action": "waitFor", "selector": "li.ProductUnit_productUnit__Qd6sv", "timeoutMs": 10000 },
+    { "action": "scrollToBottom" },
+    {
+      "action": "extract",
+      "item": "li.ProductUnit_productUnit__Qd6sv",
+      "fields": {
+        "name": ".ProductUnit_productNameV2__cV9cw",
+        "originalPrice": ".PriceArea_priceArea__NntJz del",
+        "discountRate": ".PriceArea_priceArea__NntJz [class*=\"fw-mr-[2px]\"], .PriceArea_priceArea__NntJz [class*=\"fw-bg-[#CB1400]\"]",
+        "salePrice": ".PriceArea_priceArea__NntJz [class*=\"fw-text-[20px]\"]",
+        "rating": ".ProductRating_productRating__jjf7W [aria-label]@aria-label",
+        "ratingCount": ".ProductRating_productRating__jjf7W span",
+        "link": "a@href",
+        "productId": "@data-id"
+      }
+    }
+  ]
+}
